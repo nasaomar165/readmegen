@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "readmegen"
+version = "0.2.1"
+description = "AI-powered README generator for any code repository."
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+  { name = "nasaomar165" } 
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+# readmegen purely uses the standard library, so no external packages are needed!
+dependencies = [] 
+
+[project.urls]
+"Homepage" = "https://github.com/nasaomar165/readmegen"
+"Bug Tracker" = "https://github.com/nasaomar165/readmegen/issues"
+
+# Maps the terminal command `readmegen` to the main() function inside readmegen.py
+[project.scripts]
+readmegen = "readmegen:main"
+
+# Tells setuptools that this project is a single file (readmegen.py) rather than a folder
+[tool.setuptools]
+py-modules = ["readmegen"]
