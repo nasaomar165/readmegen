@@ -9,6 +9,8 @@
 
 **Zero pip dependencies · Pure Python stdlib · 7 AI providers · Security hardened**
 
+![readmegen banner](preview.png)
+
 ---
 
 ## ✨ Features
