@@ -43,7 +43,7 @@
 
 ```bash
 # 1. Download (no install needed)
-curl -O https://raw.githubusercontent.com/yourusername/readmegen/main/readmegen.py
+curl -O https://raw.githubusercontent.com/nasaomar165/readmegen/main/readmegen.py
 
 # 2. Set a free API key
 export GROQ_API_KEY=your_key_here
