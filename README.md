@@ -1,4 +1,4 @@
-# 🤖 readmegen
+# 🤖 readmeGen
 
 > AI-powered README generator — scan any repo, get professional documentation instantly.
 
