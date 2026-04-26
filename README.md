@@ -12,16 +12,18 @@
 ![readmegen banner](preview.png)
 
 ---
-
 ## ✨ Features
 
-- 🔍 **Deep repo scanning** — reads file tree, source files, configs, and manifests
+- 🔍 **Deep repo scanning** — reads file tree, source, configs, manifests; smart file prioritization
 - 🧠 **Understands your stack** — generates contextual, accurate documentation
 - 🌐 **7 AI providers** — 5 cloud free tiers + 2 fully local options
 - ⚙️ **GitHub Actions** — one command to wire up auto-regeneration on every push
-- 🔒 **Security hardened** — SSRF protection, path traversal prevention, symlink guards, secret file blocking, API key redaction, TLS verification
-- 📦 **Zero dependencies** — pure Python 3.8+ stdlib, works anywhere
-- ⚡ **Smart file prioritization** — reads `package.json`, `main.py`, `go.mod`, `Dockerfile` first
+- 🔒 **Security hardened** — SSRF prevention, path traversal blocking, symlink guards, sensitive file detection with glob patterns, API key redaction, TLS certificate enforcement
+- 🏗️ **Provider abstraction** — clean OOP architecture; adding a new backend takes one class
+- 🔁 **Exponential backoff** — automatic retry on rate limits and transient network errors
+- 🛡️ **Secret masking in dry-run** — never leaks env values in prompt previews
+- 📦 **Zero dependencies** — pure Python stdlib, works anywhere Python 3.8+ is installed
+- 🎛️ **Power-user controls** — `--verbose`, `--stdout`, `--max-files`, `--max-total-chars`, `--max-file-size`
 
 ---
 
@@ -62,7 +64,7 @@ python readmegen.py /path/to/your/repo
 # Auto-detect provider, current directory
 python readmegen.py
 
-# Specify a repo
+# Specific repo path
 python readmegen.py ./my-project
 
 # Choose a cloud provider
@@ -79,12 +81,20 @@ python readmegen.py --provider lmstudio
 python readmegen.py --provider lmstudio --base-url http://192.168.1.5:1234
 
 # Output options
-python readmegen.py --output docs/README.md    # custom output path
-python readmegen.py --overwrite                # skip confirmation
+python readmegen.py --output docs/README.md    # custom file path
+python readmegen.py --stdout                   # print to terminal, no file written
+python readmegen.py --overwrite                # skip confirmation prompt
 
-# Inspect & debug
-python readmegen.py --dry-run                  # preview prompt, no AI call
+# Debugging & inspection
+python readmegen.py --dry-run                  # prompt preview (secrets masked)
+python readmegen.py --dry-run --verbose        # preview + token estimate + per-file stats
 python readmegen.py --list-providers           # show all providers
+
+# Fine-grained scan control
+python readmegen.py --max-files 100
+python readmegen.py --max-total-chars 160000
+python readmegen.py --max-file-size 25000
+python readmegen.py --max-files 100 --max-total-chars 160000 --verbose
 
 # GitHub Actions
 python readmegen.py --gen-workflow groq                 # print YAML to stdout
@@ -95,23 +105,22 @@ python readmegen.py --gen-workflow groq --save-workflow # save to .github/workfl
 
 ## ⚙️ GitHub Actions — Auto-regenerate README on push
 
-Wire readmegen into CI with a single command:
+One command wires readmegen into your CI:
 
 ```bash
 python readmegen.py --gen-workflow groq --save-workflow
 ```
 
-This creates `.github/workflows/readme.yml`. On every push to `main`, the workflow will:
+This creates `.github/workflows/readme.yml`. On every push to `main`, GitHub Actions will:
 
 1. Check out the repository
 2. Run `readmegen` with your chosen provider
 3. Commit and push the updated `README.md` automatically
 
-**Setup steps:**
-
-1. Go to your repo → **Settings → Secrets and variables → Actions**
+**Setup:**
+1. Go to **Settings → Secrets and variables → Actions**
 2. Add the secret for your provider (e.g. `GROQ_API_KEY`)
-3. Push — it runs on every subsequent commit
+3. Push — runs on every subsequent commit
 
 > ⚠️ Local providers (Ollama, LM Studio) cannot run in GitHub Actions. Use any cloud provider instead.
 
@@ -119,74 +128,138 @@ This creates `.github/workflows/readme.yml`. On every push to `main`, the workfl
 
 ## 🔒 Security
 
-Version 0.2.1 introduced a full security hardening pass. All protections run automatically with no configuration needed.
+All protections run automatically — no configuration required.
 
 ### SEC-1 — SSRF & URL Scheme Validation
-`--base-url` is validated before any request is made. Only `http://` and `https://` schemes are accepted. `file://`, `ftp://`, `javascript:` and all other schemes are rejected. Cloud providers additionally enforce HTTPS.
+`--base-url` and all provider URLs are validated before any network call. Only `http://` and `https://` schemes are accepted. `file://`, `ftp://`, `javascript:`, `data:` and all others are rejected. Cloud providers additionally require HTTPS.
 
 ```
-❌  --base-url file:///etc/passwd     → blocked (disallowed scheme)
-❌  --base-url ftp://evil.com         → blocked (disallowed scheme)
-❌  --base-url http://api.groq.com    → blocked (cloud requires HTTPS)
-✅  --base-url https://api.groq.com   → allowed
-✅  --base-url http://localhost:11434  → allowed (local)
+❌  --base-url file:///etc/passwd     blocked (disallowed scheme)
+❌  --base-url ftp://evil.com         blocked (disallowed scheme)
+❌  --base-url http://api.groq.com    blocked (cloud requires HTTPS)
+✅  --base-url https://api.groq.com   allowed
+✅  --base-url http://localhost:11434  allowed (local)
 ```
 
 ### SEC-2 — Output Path Traversal Prevention
-`--output` paths are resolved and verified to stay inside the repository root before any file is written.
+`--output` paths are resolved and verified to stay inside the repository root before any write occurs.
 
 ```
-❌  --output ../../etc/crontab   → blocked (escapes root)
-❌  --output /etc/passwd         → blocked (absolute outside root)
-✅  --output docs/README.md      → allowed
+❌  --output ../../etc/crontab   blocked (escapes root)
+❌  --output /etc/passwd         blocked (absolute path outside root)
+✅  --output docs/README.md      allowed
 ```
 
 ### SEC-3 — Symlink Escape & Sensitive File Blocking
-`rglob("*")` follows symlinks, so a crafted repo could use `ln -s /etc/passwd leak.txt` to exfiltrate host files to the AI. readmegen resolves every symlink and verifies the real path is still inside the repository root before reading it.
+Every file discovered by `rglob("*")` has its symlink-resolved real path checked to confirm it stays inside the repository root. Files that commonly hold secrets are blocked via both an **exact name set** and **fnmatch glob patterns** — case-insensitively:
 
-Additionally, files that commonly contain secrets are never read:
+| Type | Examples |
+|------|---------|
+| Exact names | `.env`, `id_rsa`, `id_ed25519`, `.netrc`, `auth.json`, … |
+| Glob: crypto files | `*.pem`, `*.key`, `*.crt`, `*.p12`, `*.pfx` |
+| Glob: secrets files | `secrets.*`, `credentials.*`, `password.*` |
+| Glob: env variants | `.env.*` (`.env.local`, `.env.production`, …) |
+
+Skipped files are counted and reported — never silently dropped.
+
+### SEC-4 — Secret Masking & Key Redaction
+`--dry-run` automatically applies regex masking before displaying any prompt output, replacing assignments like `API_KEY=abc123` with `API_KEY=[REDACTED]`. API keys are also never printed in full — only the first and last 4 characters are shown:
 
 ```
-.env  .env.*  id_rsa  id_ed25519  .netrc  .npmrc
-secrets.yml  credentials  auth.json  (and more)
-```
-
-Skipped sensitive files are counted and reported — never silently ignored.
-
-### SEC-4 — API Key Redaction
-API keys are never printed in full. All output shows only the first and last 4 characters:
-
-```
-🔑 Using API key: sk-a…cdef
+🔑 API key: sk-a…cdef
 ```
 
 ### SEC-5 — Specific Exception Handling
-File read errors are caught as `OSError` (not bare `except`) and reported to stderr, so permission errors and broken symlinks are visible rather than silently swallowed.
+All file-read errors are caught as `OSError` (not a bare `except`) and printed to stderr, so permission errors and broken symlinks are visible instead of silently swallowed.
 
 ### SEC-6 — TLS Certificate Verification
-All outbound requests use `ssl.create_default_context()`, ensuring certificate verification is always enforced. There is no `ssl.CERT_NONE` anywhere in the codebase.
+Every outbound request explicitly uses `ssl.create_default_context()`. There is no `ssl.CERT_NONE` or certificate verification bypass anywhere in the codebase.
+
+---
+
+## 🏗️ Architecture
+
+### Provider Abstraction (v0.2.2)
+
+Providers are now a clean class hierarchy. Adding a new AI backend means writing one class:
+
+```
+BaseProvider  (abc.ABC)
+├── OpenAICompatProvider   ← Groq, DeepSeek, Kimi, GLM, LM Studio
+├── GeminiProvider         ← Google Gemini
+└── OllamaProvider         ← Ollama local server
+```
+
+### Exponential Backoff Retry (v0.2.2)
+
+Transient failures (HTTP 429, 500–504, network errors) are retried automatically:
+
+```
+Attempt 1 fails → wait 1s → Attempt 2 fails → wait 2s → Attempt 3 fails → wait 4s → raise
+```
+
+### How a scan works
+
+```
+Your repo
+    │
+    ▼
+Scan recursively (rglob)
+    │  skip dirs:  node_modules, .git, __pycache__, dist, venv, ...
+    │  skip files: *.pyc, *.lock, .DS_Store, ...
+    │  skip:       symlinks escaping root
+    │  skip:       .env, *.key, secrets.*, credentials.*, *.pem, ...
+    │  prioritize: package.json, main.py, go.mod, Dockerfile, ...
+    │  caps:       --max-files (50)  ·  --max-total-chars (80,000)
+    │              --max-file-size (15,000 per file)
+    ▼
+Validate security constraints
+    │  --output path stays inside repo root        [SEC-2]
+    │  --base-url uses http/https only             [SEC-1]
+    ▼
+Build structured prompt
+    │  directory tree + file contents
+    │  --dry-run: mask secrets before display      [SEC-4]
+    ▼
+Call AI provider (with retry)
+    │  cloud (HTTPS + cert verification):  Groq, Gemini, DeepSeek, Kimi, GLM
+    │  local:                              Ollama, LM Studio
+    ▼
+Write README.md  (or --stdout)
+    │  path traversal check before write           [SEC-2]
+    ▼
+Optional: GitHub Actions commits README on every push
+```
 
 ---
 
 ## 🛠️ Configuration Reference
 
-| Flag / Env Var        | Description |
-|-----------------------|-------------|
-| `--provider`          | AI provider to use (auto-detected if omitted) |
-| `--model`             | Override the default model name |
-| `--base-url`          | Override API URL (remote Ollama, custom LM Studio host) |
-| `--output`            | Output file path (default: `README.md`) |
-| `--overwrite`         | Skip the overwrite confirmation prompt |
-| `--dry-run`           | Preview the prompt without calling AI |
-| `--gen-workflow`      | Print GitHub Actions YAML for a given provider |
-| `--save-workflow`     | Save the workflow file (use with `--gen-workflow`) |
-| `--list-providers`    | Print all providers with env vars and notes |
-| `--version`           | Print version and exit |
-| `GROQ_API_KEY`        | API key for Groq |
-| `GEMINI_API_KEY`      | API key for Google Gemini |
-| `DEEPSEEK_API_KEY`    | API key for DeepSeek |
-| `KIMI_API_KEY`        | API key for Kimi (Moonshot) |
-| `GLM_API_KEY`         | API key for Zhipu GLM |
+| Flag                  | Default   | Description |
+|-----------------------|-----------|-------------|
+| `--provider`          | auto      | AI provider to use |
+| `--model`             | per-provider | Override model name |
+| `--base-url`          | per-provider | Override API endpoint URL |
+| `--output`            | `README.md` | Output file path |
+| `--stdout`            | off       | Print to terminal instead of file |
+| `--overwrite`         | off       | Skip overwrite confirmation |
+| `--dry-run`           | off       | Preview prompt, no AI call |
+| `--verbose`           | off       | Per-file scan stats + token estimate |
+| `--max-files`         | 50        | Maximum files to read |
+| `--max-total-chars`   | 80,000    | Total character cap for prompt |
+| `--max-file-size`     | 15,000    | Per-file character cap |
+| `--gen-workflow`      | —         | Print GitHub Actions YAML for a provider |
+| `--save-workflow`     | off       | Save workflow (use with `--gen-workflow`) |
+| `--list-providers`    | —         | Show all providers and exit |
+| `--version`           | —         | Print version and exit |
+
+| Env Variable        | Provider |
+|---------------------|----------|
+| `GROQ_API_KEY`      | Groq |
+| `GEMINI_API_KEY`    | Google Gemini |
+| `DEEPSEEK_API_KEY`  | DeepSeek |
+| `KIMI_API_KEY`      | Kimi (Moonshot) |
+| `GLM_API_KEY`       | Zhipu GLM |
 
 ---
 
@@ -196,40 +269,7 @@ All outbound requests use `ssl.create_default_context()`, ensuring certificate v
 pip install -e .
 # Use from anywhere:
 readmegen ./my-project
-readmegen --provider deepseek ./my-project
-```
-
----
-
-## 🏗️ How It Works
-
-```
-Your repo
-    │
-    ▼
-Scan recursively
-    │  skip:      node_modules, .git, __pycache__, dist, venv, ...
-    │  skip:      .env, id_rsa, secrets.yml, and other sensitive files
-    │  skip:      symlinks that escape the repo root
-    │  prioritize: package.json, main.py, go.mod, Dockerfile, ...
-    │  cap:        50 files · 80,000 chars total
-    ▼
-Validate security constraints
-    │  --output path stays inside repo root
-    │  --base-url uses http/https only
-    ▼
-Build structured prompt
-    │  directory tree + file contents
-    ▼
-Call chosen AI provider
-    │  cloud (HTTPS + cert verification): Groq, Gemini, DeepSeek, Kimi, GLM
-    │  local: Ollama, LM Studio
-    ▼
-Write README.md
-    │  title, features, install, usage, config,
-    │  project structure, API reference, contributing, license
-    ▼
-Optional: GitHub Actions commits README on every push
+readmegen --provider deepseek --verbose ./my-project
 ```
 
 ---
@@ -250,23 +290,35 @@ readmegen/
 
 ## 🗂️ Changelog
 
+### v0.2.2 — Architecture & UX improvements
+- **Provider abstraction**: `BaseProvider` ABC with `OpenAICompatProvider`, `GeminiProvider`, `OllamaProvider` — adding a backend now takes one class
+- **Exponential backoff retry**: automatic retry on HTTP 429/5xx and network errors (1s → 2s → 4s)
+- **Token estimation**: `--verbose` shows `~N tokens` and warns if the model context window may be exceeded
+- **Secret masking in dry-run**: `API_KEY=abc123` → `API_KEY=[REDACTED]` before any display
+- **Expanded sensitive file detection**: added `*.pem`, `*.key`, `*.crt`, `secrets.*`, `credentials.*`, `password.*`, `.env.*` glob patterns — with precision tuning to avoid false positives on source files
+- **Case-insensitive ignore matching**: `fnmatch` against lowercased names — works identically on Windows, macOS, Linux
+- **Fixed directory-ignore patterns**: `fnmatch` applied to every path component, so `foo.egg-info`, `.tox` etc. are now reliably skipped
+- **ASCII art banner**: colorful intro on normal runs; suppressed for `--help`, `--list-providers`, `--gen-workflow`
+- **New CLI flags**: `--verbose`, `--stdout`, `--max-files`, `--max-total-chars`, `--max-file-size`
+- **Better error messages**: specific exception types with actionable hints per provider
+- **Full type annotations** on all functions and methods
+
 ### v0.2.1 — Security hardening
-- SEC-1: SSRF / URL scheme validation for `--base-url`
+- SEC-1: SSRF / URL scheme validation
 - SEC-2: Output path traversal prevention
-- SEC-3: Symlink escape guard + sensitive file blocklist (`.env`, `id_rsa`, etc.)
-- SEC-4: API key redaction in all log output
-- SEC-5: Replaced bare `except` with specific `OSError` handling
-- SEC-6: Explicit TLS certificate verification on all requests
+- SEC-3: Symlink escape guard + sensitive file blocklist
+- SEC-4: API key redaction in all output
+- SEC-5: Replaced bare `except` with `OSError`
+- SEC-6: Explicit TLS certificate verification
 
 ### v0.2.0 — New providers & GitHub Actions
-- Added DeepSeek, Kimi (Moonshot), GLM (Zhipu) providers
-- Added LM Studio local provider
-- Added `--gen-workflow` / `--save-workflow` for GitHub Actions
-- Added `--list-providers`, `--base-url`, `--version` flags
-- Auto-detection probes LM Studio before falling back to Ollama
+- Added DeepSeek, Kimi (Moonshot), GLM (Zhipu), LM Studio
+- `--gen-workflow` / `--save-workflow` for GitHub Actions
+- `--list-providers`, `--base-url`, `--version` flags
+- Auto-detection order with LM Studio probe
 
 ### v0.1.0 — Initial release
-- Groq, Google Gemini, Ollama providers
+- Groq, Google Gemini, Ollama
 - Repo scanning with smart file prioritization
 - Single-file, zero-dependency design
 
@@ -274,12 +326,12 @@ readmegen/
 
 ## 🤝 Contributing
 
-1. Fork the repo
-2. Make your changes in `readmegen.py`
-3. Test: `python readmegen.py --dry-run .`
+1. Fork the repository
+2. Make changes to `readmegen.py`
+3. Test: `python readmegen.py --dry-run --verbose .`
 4. Open a pull request
 
-Please keep the zero-dependency constraint — stdlib only.
+**Please keep the zero-dependency constraint** — stdlib only, no `pip install`.
 
 ---
 
