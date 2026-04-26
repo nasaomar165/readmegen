@@ -1,7 +1,7 @@
 {
   "_doc": "Edit this file once to set your preferred defaults. CLI flags always override these values.",
 
-  "provider": "lmstudio",
+  "provider": null,
   "model": null,
   "base_url": null,
 
