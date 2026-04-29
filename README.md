@@ -2,7 +2,7 @@
 
 > AI-powered README generator — scan any repo, get professional documentation instantly.
 
-![Version](https://img.shields.io/badge/version-0.2.1-blue)
+![Version](https://img.shields.io/badge/version-0.3.1-blue)
 ![Python](https://img.shields.io/badge/python-3.8%2B-brightgreen)
 ![Dependencies](https://img.shields.io/badge/dependencies-zero-success)
 ![License](https://img.shields.io/badge/license-MIT-blue)
