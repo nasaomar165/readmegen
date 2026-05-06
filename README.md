@@ -53,8 +53,8 @@
  
 ```bash
 # 1. Download (no install needed)
-curl -O https://github.com/nasaomar165/readmegen.py
-curl -O https://github.com/nasaomar165/eadmegen_defaults.json
+curl -O https://raw.githubusercontent.com/nasaomar165/readmegen/main/readmegen.py
+curl -O https://raw.githubusercontent.com/nasaomar165/readmegen/main/eadmegen_defaults.json
  
 # 2. Set your preferred provider in readmegen_defaults.json (edit once, applies everywhere)
 #    Or set a free API key:
