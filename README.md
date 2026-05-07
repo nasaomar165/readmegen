@@ -582,4 +582,4 @@ MIT
 - Users are responsible for compliance with third-party provider terms of service and all applicable laws.
 - Not affiliated with NASA, Groq, Google, DeepSeek, or any other organization.
 
-> See [DISCLAIMER.md](./DISCLAIMER.md) for full terms.
+> See [DISCLAIMER.md](Disclaimer.md) for full terms.
