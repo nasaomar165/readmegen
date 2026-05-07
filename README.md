@@ -569,3 +569,12 @@ readmegen/
 ## 📄 License
  
 MIT
+
+## ⚠️ Disclaimer
+This software is provided "AS IS" without warranty of any kind. **Use at your own risk.**
+
+- No Affiliation: This project is NOT affiliated with NASA or any government organization.
+- No Liability: The authors are not responsible for any damages from using this software.
+- Educational Use: Intended for educational and personal use only.
+- Legal Compliance: Users are responsible for ensuring compliance with applicable laws.
+
