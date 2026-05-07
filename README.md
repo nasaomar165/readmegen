@@ -571,10 +571,15 @@ readmegen/
 MIT
 
 ## ⚠️ Disclaimer
-This software is provided "AS IS" without warranty of any kind. **Use at your own risk.**
 
-- No Affiliation: This project is NOT affiliated with NASA or any government organization.
-- No Liability: The authors are not responsible for any damages from using this software.
-- Educational Use: Intended for educational and personal use only.
-- Legal Compliance: Users are responsible for ensuring compliance with applicable laws.
+- This software is provided **"AS IS"** with no warranty of any kind.
+- When using cloud providers, **your repository contents are sent to third-party servers** — review what gets scanned with `--dry-run` first.
+- Sensitive file detection is **heuristic, not exhaustive** — never run on codebases with classified, regulated, or confidential data without verifying the prompt output first.
+- AI-generated documentation may be **inaccurate or incomplete** — always review before publishing.
+- The `--overwrite` flag is **irreversible** without `--backup` or version control.
+- The GitHub Actions workflow will **automatically commit AI-generated content** to your repo on every push — enable it intentionally.
+- The author(s) accept **no liability** for data exposure, file loss, or damages from using this software.
+- Users are responsible for compliance with third-party provider terms of service and all applicable laws.
+- Not affiliated with NASA, Groq, Google, DeepSeek, or any other organization.
 
+> See [DISCLAIMER.md](./DISCLAIMER.md) for full terms.
